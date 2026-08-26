@@ -22,8 +22,6 @@ function requireBaileys() {
   }
 }
 
-const DEFAULT_SEND_DELAY_MS = 900; // be gentle: consecutive sends look less bot-like
-
 function statusCodeOf(error) {
   return (error && error.output && error.output.statusCode) || 0;
 }
@@ -35,7 +33,12 @@ function statusCodeOf(error) {
  * device — anyone who has them can send as this account, so the directory is
  * gitignored and created 0700.
  */
-function createBaileysProvider(cfg) {
+/**
+ * @param {object} cfg
+ * @param {object} [deps] test seam: `deps.baileys` replaces the real client, so
+ *   the connection state machine below can be driven without a WhatsApp socket.
+ */
+function createBaileysProvider(cfg, deps = {}) {
   let sock = null;
   let saveCreds = null;
   let openPromise = null;
@@ -88,7 +91,7 @@ function createBaileysProvider(cfg) {
       makeCacheableSignalKeyStore,
       DisconnectReason,
       Browsers,
-    } = requireBaileys();
+    } = deps.baileys || requireBaileys();
 
     ensureSessionDir();
     const waLogger = pinoCompatible();
@@ -211,7 +214,7 @@ function createBaileysProvider(cfg) {
             );
           }
 
-          const delay = Math.min(2000 * 2 ** attempt, 30_000);
+          const delay = Math.min(cfg.baileys.reconnectBaseMs * 2 ** attempt, 30_000);
           logger.warn(
             `WhatsApp connection closed (status ${code || 'unknown'}: ${reason}) — ` +
               `reconnecting in ${delay / 1000}s (attempt ${attempt + 1}/${cfg.baileys.maxReconnects}).`,
@@ -233,7 +236,7 @@ function createBaileysProvider(cfg) {
       }
       const digits = String(opts.pairWithNumber).replace(/[^\d]/g, '');
       // The socket has to finish its handshake before it can mint a code.
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, cfg.baileys.pairHandshakeMs));
       const code = await sock.requestPairingCode(digits);
       const pretty = code.match(/.{1,4}/g).join('-');
       logger.info(`Pairing code for +${digits}: ${pretty}`);
@@ -302,7 +305,8 @@ function createBaileysProvider(cfg) {
       const jid = toJid(recipient);
       const res = await sock.sendMessage(jid, { text });
       logger.info(`Sent to ${describe(jid)} (${text.length} chars, id ${res && res.key ? res.key.id : '?'})`);
-      await new Promise((r) => setTimeout(r, DEFAULT_SEND_DELAY_MS));
+      // Space consecutive sends out a little; a burst looks more bot-like.
+      await new Promise((r) => setTimeout(r, cfg.baileys.sendDelayMs));
       return res;
     },
 

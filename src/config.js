@@ -84,6 +84,13 @@ function load() {
       // A login is human-paced: find the phone, open the menu, type the code.
       pairTimeoutMs: int('WHATSAPP_PAIR_TIMEOUT_MS', 240_000),
       maxReconnects: int('WHATSAPP_MAX_RECONNECTS', 5),
+      // Reconnect backoff doubles from here, capped at 30s.
+      reconnectBaseMs: int('WHATSAPP_RECONNECT_BASE_MS', 2000),
+      // Grace period before asking for a pairing code, so the socket can finish
+      // its handshake first.
+      pairHandshakeMs: int('WHATSAPP_PAIR_HANDSHAKE_MS', 3000),
+      // Pause between consecutive sends so a burst looks less bot-like.
+      sendDelayMs: int('WHATSAPP_SEND_DELAY_MS', 900),
     },
     cloud: {
       token: process.env.WA_CLOUD_TOKEN || '',

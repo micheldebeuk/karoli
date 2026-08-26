@@ -18,6 +18,8 @@ const { toE164Digits } = require('./jid');
  * For a personal weekend-planning bot, WHATSAPP_PROVIDER=baileys is the better
  * fit. This provider exists so the app is not locked to the unofficial route.
  */
+const TEMPLATE_VAR_MAX = 900;
+
 function createCloudProvider(cfg) {
   const base = `https://graph.facebook.com/${cfg.cloud.apiVersion}/${cfg.cloud.phoneNumberId}/messages`;
 
@@ -50,9 +52,23 @@ function createCloudProvider(cfg) {
     return err.apiCode === 131047 || err.apiCode === 131026 || err.apiCode === 470;
   }
 
-  /** Templates reject newlines/tabs in variables — flatten to one line. */
+  /**
+   * Templates reject newlines and tabs in variables, so the planning has to
+   * become one clean line. Paragraph breaks turn into a visible separator;
+   * every other whitespace character — a lone tab included — collapses to a
+   * single space. Meta caps a variable's length, so it is truncated too, and
+   * a separator must never be left dangling at either end.
+   */
+  const EDGE_SEPARATORS = /^(?:\s*·\s*)+|(?:\s*·\s*)+$/g;
+
   function flatten(text) {
-    return text.replace(/\s*\n+\s*/g, ' · ').replace(/\s{2,}/g, ' ').trim().slice(0, 900);
+    const oneLine = String(text)
+      .replace(/\s*\n+\s*/g, ' · ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(EDGE_SEPARATORS, '');
+    // Truncating can expose a new trailing separator, so tidy the edges again.
+    return oneLine.slice(0, TEMPLATE_VAR_MAX).trim().replace(EDGE_SEPARATORS, '');
   }
 
   return {

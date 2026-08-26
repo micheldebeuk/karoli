@@ -112,6 +112,13 @@ that matter most:
 | `PLANNING_UPCOMING_ONLY` | Only send plans falling on the coming Sat/Sun. |
 | `DRY_RUN` | `1` to render without sending, whatever the provider. |
 
+Timing knobs, all with sane defaults: `WHATSAPP_CONNECT_TIMEOUT_MS` (60s — an
+unattended send must fail rather than hang), `WHATSAPP_PAIR_TIMEOUT_MS` (240s,
+since a login waits on a human), `WHATSAPP_MAX_RECONNECTS` (5),
+`WHATSAPP_RECONNECT_BASE_MS` (2s, doubling, capped at 30s),
+`WHATSAPP_PAIR_HANDSHAKE_MS` (3s) and `WHATSAPP_SEND_DELAY_MS` (900ms between
+consecutive sends).
+
 Config is validated before anything is sent, so a group JID on the Cloud API or
 an empty recipient list fails immediately with a readable message rather than
 half-way through a send.
@@ -179,13 +186,31 @@ src/
 ## Tests
 
 ```bash
-npm test     # node:test, no network, no WhatsApp session
-npm run check
+npm test      # node:test — no network, no WhatsApp session, no phone
+npm run check # syntax check every file
 ```
 
-The suite deliberately runs without `npm install` — `src/whatsapp/baileys.js`
-requires its client lazily so CI can cover all the logic without pulling the
-heavy dependency.
+87 tests, and they run **without `npm install`**: `src/whatsapp/baileys.js`
+requires its client lazily, and the transport tests substitute a fake for it
+entirely, so CI covers everything without pulling the heavy dependency.
+
+What is covered:
+
+| Area | How |
+| --- | --- |
+| Formatting, pagination, weekend filtering | Directly, against the real sheet columns |
+| Command grammar, bot routing, vote attribution | Fake provider + fake planning source |
+| Config validation | Real env parsing |
+| Delivery, per-recipient failure isolation | Fake provider |
+| **Cloud transport** | `globalThis.fetch` stubbed: payload shape, the 24h-window template fallback, variable flattening, error surfacing |
+| **Baileys transport** | `tests/fake-baileys.js` drives the connection state machine: open, QR, pairing codes, logged-out, backoff and reconnect, retry-budget reset, timeout, inbound parsing |
+
+**What is not covered, and cannot be without a real handset:** that a message
+actually arrives, that the bold/emoji render as intended in the WhatsApp client,
+that pairing completes, and that a group JID resolves. The tests prove this code
+behaves correctly against a faithful stand-in — not that WhatsApp accepts it.
+The first genuine proof is the pairing run on the VPS; `send --dry-run` shows
+the exact bytes beforehand.
 
 ## What's left
 
