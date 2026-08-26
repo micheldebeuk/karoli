@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+# Baileys multi-device auth state — these files ARE the WhatsApp session.
+# Anyone holding them can send messages as the linked account. Never commit.
+data/
+*.log

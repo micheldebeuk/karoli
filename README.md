@@ -1,0 +1,213 @@
+# Planes — WhatsApp bot for *Planes de Fin de Semana*
+
+A small Node app that sends our weekend planning to WhatsApp and answers back.
+It runs on the **Losali VPS** under pm2, next to the losali proxy.
+
+```
+Google Sheets ──▶ planning source ──▶ formatter ──▶ WhatsApp transport ──▶ us
+ "Planes Karolito"   (src/planning)   (src/format)   (src/whatsapp)
+        ▲                                                   │
+        └──────────────── votes ◀──── bot commands ◀─────────┘
+                                      (src/bot)
+```
+
+**Status: the WhatsApp half is done. The Google half is not.**
+Everything from "planning source" rightwards works today, running off a snapshot
+of the sheet in `fixtures/planning.json`. Reading the live sheet — and writing
+votes back into it — is the next milestone; see [What's left](#whats-left).
+
+---
+
+## Quick start
+
+```bash
+npm install
+cp .env.example .env      # then edit it
+npm run preview           # render the planning to stdout — sends nothing
+npm run login -- --pair +34600111222   # link this machine to WhatsApp, once
+npm run send              # send it for real
+npm run listen            # run the bot: answer PLANES / votes
+```
+
+`npm run preview` needs no configuration and no WhatsApp session, so it is the
+fastest way to see what the message will look like:
+
+```
+*Planes de Fin de Semana*
+_Sábado 29 y domingo 30 de agosto_
+
+*SABADO 29/08/2026*
+
+🏖️ *E1 · Caldes d'Estrac (Caldetes)*
+🕒 09:30-14:00 · Escapada - mar y playa
+👶 Con el peque
+📝 R1 desde Arc de Triomf 50-55 min. Fundacio Palau al lado. Carrito OK.
+🔗 https://caldetes.cat/turisme
+📍 https://www.google.com/maps/search/?api=1&query=Platja+dels+Tres+Micos...
+```
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `preview` | Render the planning to stdout. No session, no sending. |
+| `send` | Send the planning to everyone in `WHATSAPP_RECIPIENTS`. |
+| `login [--qr \| --pair +34…]` | Link this machine to WhatsApp. Once, per machine. |
+| `listen` | Stay connected and answer commands from the chat. |
+| `status [--groups]` | Print config + session state. `--groups` lists group JIDs. |
+
+Flags: `--dry-run` renders and logs without sending; `--all` includes plans
+outside the upcoming weekend.
+
+## What the bot answers
+
+From any chat it is in:
+
+| You send | It does |
+| --- | --- |
+| `PLANES` | Re-sends the current planning |
+| `E1` | Detail of that one plan |
+| `E1 SI` / `C2 NO` | Records your vote |
+| `AYUDA` | The command list |
+
+Anything else is ignored on purpose — in a group the bot has to stay quiet
+rather than answer every message.
+
+Votes are attributed by phone number via `PLANNING_VOTERS`. A number that is not
+listed gets a polite refusal instead of a silently discarded vote. Until the
+Google writer lands, a vote is acknowledged as *"anotado, pero todavía no se
+guarda en la hoja"* — the bot never claims to have saved something it didn't.
+
+## Choosing a transport
+
+`WHATSAPP_PROVIDER` picks how messages go out:
+
+| Value | Notes |
+| --- | --- |
+| **`baileys`** (default) | WhatsApp Web multi-device. Free, arbitrary formatted text, **works with groups**, and can receive messages — so the interactive bot needs this one. Requires a one-time device pairing and a session directory that lives on the VPS. Unofficial: Meta does not support it, and it can break when WhatsApp Web changes. |
+| `cloud` | Meta's official WhatsApp Cloud API. Nothing to pair. But it **cannot post to groups**, and a message sent outside the recipient's 24-hour window must be an approved template whose variables cannot contain newlines — so a multi-line planning cannot go out that way. Inbound needs a public webhook, which this app does not serve. |
+| `dry-run` | Renders and logs, sends nothing. |
+
+For a personal weekend-planning bot posting into our chat, `baileys` is the
+right fit; `cloud` is there so the app is not locked to the unofficial route.
+
+### The session directory is a credential
+
+`data/wa-session/` **is** the linked device. Anyone holding those files can send
+WhatsApp messages as that account. It is gitignored, created `0700`, and must
+never be committed, copied around, or pasted into a log. To revoke: WhatsApp →
+Linked devices → remove the device, then `rm -rf data/wa-session`.
+
+## Configuration
+
+Everything is environment variables; `.env.example` documents each one. The ones
+that matter most:
+
+| Variable | Meaning |
+| --- | --- |
+| `WHATSAPP_RECIPIENTS` | Comma-separated E.164 numbers and/or group JIDs (`…@g.us`). Find group JIDs with `npm run status -- --groups`. |
+| `WHATSAPP_PROVIDER` | `baileys` \| `cloud` \| `dry-run` |
+| `PLANNING_VOTERS` | `+34600111222=Olivier,+34600333444=Karina` |
+| `PLANNING_SOURCE` | `fixture` (today) \| `google-sheets` (not implemented) |
+| `PLANNING_UPCOMING_ONLY` | Only send plans falling on the coming Sat/Sun. |
+| `DRY_RUN` | `1` to render without sending, whatever the provider. |
+
+Config is validated before anything is sent, so a group JID on the Cloud API or
+an empty recipient list fails immediately with a readable message rather than
+half-way through a send.
+
+## Deploying to the Losali VPS
+
+The app runs under pm2 as two processes (`ecosystem.config.js`):
+
+* **`planes-bot`** — always on, `listen`, answers commands.
+* **`planes-weekly`** — one shot, Thursdays 19:00 Europe/Madrid, `send`, then exits.
+
+```bash
+# on the VPS, as ubuntu
+git clone https://github.com/micheldebeuk/Plans.git /home/ubuntu/plans
+/home/ubuntu/plans/deploy/install.sh          # deps, .env, syntax check
+cd /home/ubuntu/plans
+nano .env                                     # fill it in
+npm run login -- --pair +34600111222          # link the device, once
+pm2 start ecosystem.config.js && pm2 save
+```
+
+`deploy/update.sh` is the per-minute cron shape used by the losali proxy: it
+does nothing when already current, runs `npm ci` only when the manifest changed,
+and refuses to restart into a tree that does not parse.
+
+```cron
+* * * * * /home/ubuntu/plans/deploy/update.sh >> /home/ubuntu/plans/logs/update.log 2>&1
+```
+
+### Driving the VPS without SSH
+
+`.github/workflows/vps.yml` runs on the self-hosted runner labelled
+`losali-vps`, the same channel `losali` uses for proxy work. Dispatch it with an
+`action` of `status`, `install`, `update`, `send`, `send-dry-run`, `restart`,
+`logs`, `groups` or `login`.
+
+> **One-time setup:** that runner is registered against the `losali` repository.
+> Register it for this repository too (Settings → Actions → Runners → New
+> self-hosted runner, adding `--labels losali-vps`), or promote it to an
+> organisation runner shared by both. Until then dispatched runs simply queue.
+
+## Layout
+
+```
+src/
+  index.js              CLI: preview | send | login | listen | status
+  config.js             env -> config, with validation before any send
+  format.js             planning -> WhatsApp message parts (splits, numbers them)
+  send.js               deliver to every recipient, isolating failures
+  logger.js             tiny logger + a pino-shaped shim for Baileys
+  planning/
+    index.js            source factory: fixture (now) | google-sheets (TODO)
+    schema.js           the Plan shape, sheet-column mapping, date/weekend logic
+  whatsapp/
+    index.js            transport factory
+    baileys.js          WhatsApp Web multi-device (send + receive + groups)
+    cloud.js            Meta Cloud API (send only, no groups)
+    dryrun.js           records instead of sending
+    jid.js              phone number <-> JID
+  bot/
+    index.js            command routing, vote attribution
+    commands.js         the command grammar
+```
+
+## Tests
+
+```bash
+npm test     # node:test, no network, no WhatsApp session
+npm run check
+```
+
+The suite deliberately runs without `npm install` — `src/whatsapp/baileys.js`
+requires its client lazily so CI can cover all the logic without pulling the
+heavy dependency.
+
+## What's left
+
+The Google half, in `src/planning/index.js` (`googleSheetsSource`), which today
+throws a clear "not implemented" instead of pretending:
+
+1. Authenticate to Google (service account, or an OAuth refresh token for the
+   account owning the sheet).
+2. `GET spreadsheets/{PLANNING_SHEET_ID}/values/{PLANNING_SHEET_RANGE}`.
+3. Pass the raw `values` array to `schema.rowsToPlans()` and the result to
+   `normalizePlanning()` — the column-title mapping, date parsing and weekend
+   filtering are already done and tested.
+4. Implement `recordVote()` to write the *Voto Olivier* / *Voto Karina* /
+   *Fecha del voto* cells of the matching `ID` row.
+
+Nothing downstream has to change: the bot already calls `recordVote()` and
+already reports honestly when the source is read-only.
+
+The sheet is **Planes Karolito**
+(`1Nvnh1YvoEMrZgFIpInuQNvqck8vX6fN2XNKva7KW2QY`), columns:
+
+```
+ID | Plan | Categoria | Tipo | Dia propuesto | Horario | Estado |
+Voto Olivier | Voto Karina | Fecha del voto | Enlace oficial | Google Maps | Notas
+```

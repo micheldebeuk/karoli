@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No `npm ci` on purpose: the tests cover the pure logic (formatting,
+      # command parsing, routing, config) and must not need the heavy WhatsApp
+      # client to run. src/whatsapp/baileys.js requires it lazily for exactly
+      # this reason.
+      - name: Syntax check
+        run: node scripts/check-syntax.js
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Render the planning (smoke test)
+        run: node src/index.js preview
+        env:
+          TZ: Europe/Madrid

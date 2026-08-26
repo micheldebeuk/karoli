@@ -1,0 +1,97 @@
+name: VPS ops
+
+# Runs ON the Losali VPS through the self-hosted runner, the same channel the
+# losali repo uses for proxy work (see proxy/DEPLOY.md there). No inbound SSH.
+#
+# PREREQUISITE: the runner labelled `losali-vps` is registered against the
+# `losali` repository. Register it for this repository too (Settings → Actions →
+# Runners → New self-hosted runner, adding `--labels losali-vps`), or promote it
+# to an organisation runner shared with both. Until then dispatched runs just
+# queue harmlessly.
+#
+# NEVER echo secrets here — workflow logs are readable by anyone with repo access.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do on the VPS
+        required: true
+        default: status
+        type: choice
+        options: [status, install, update, send, send-dry-run, restart, logs, groups, login]
+      pair_number:
+        description: 'For a pairing-code login: the WhatsApp number, e.g. +34600111222'
+        required: false
+        type: string
+
+concurrency:
+  group: planes-vps
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: [self-hosted, losali-vps]
+    env:
+      APP_DIR: /home/ubuntu/plans
+    steps:
+      - name: Show what is about to run
+        run: echo "action=${{ inputs.action }} on $(hostname) in $APP_DIR"
+
+      - name: install
+        if: inputs.action == 'install'
+        run: |
+          if [ -x "$APP_DIR/deploy/install.sh" ]; then
+            "$APP_DIR/deploy/install.sh"
+          else
+            echo "First install: clone the repo to $APP_DIR, then re-run this action."
+            echo "  git clone https://github.com/micheldebeuk/Plans.git $APP_DIR"
+            exit 1
+          fi
+
+      - name: update
+        if: inputs.action == 'update'
+        run: "$APP_DIR/deploy/update.sh"
+
+      - name: status
+        if: inputs.action == 'status'
+        run: |
+          cd "$APP_DIR"
+          git rev-parse --short HEAD
+          node src/index.js status
+          pm2 describe planes-bot | sed -n '1,25p' || true
+
+      - name: groups
+        if: inputs.action == 'groups'
+        run: cd "$APP_DIR" && node src/index.js status --groups
+
+      - name: send
+        if: inputs.action == 'send'
+        run: cd "$APP_DIR" && node src/index.js send
+
+      - name: send (dry run)
+        if: inputs.action == 'send-dry-run'
+        run: cd "$APP_DIR" && node src/index.js send --dry-run
+
+      - name: restart
+        if: inputs.action == 'restart'
+        run: cd "$APP_DIR" && pm2 startOrReload ecosystem.config.js && pm2 save && pm2 status
+
+      # The pairing code is printed to the workflow log. It expires in minutes and
+      # is useless without physical access to the phone, but treat the run as
+      # sensitive all the same: do not re-run it idly, and delete the run logs
+      # afterwards if the repo has readers who should not link a device.
+      - name: login (pairing code)
+        if: inputs.action == 'login'
+        timeout-minutes: 5
+        run: |
+          if [ -z "${{ inputs.pair_number }}" ]; then
+            echo "pair_number input is required for the login action (e.g. +34600111222)"
+            exit 1
+          fi
+          cd "$APP_DIR"
+          node src/index.js login --pair '${{ inputs.pair_number }}'
+
+      - name: logs
+        if: inputs.action == 'logs'
+        run: cd "$APP_DIR" && pm2 logs --nostream --lines 120 planes-bot || tail -n 120 logs/bot.out.log

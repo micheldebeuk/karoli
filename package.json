@@ -1,0 +1,24 @@
+{
+  "name": "planes-whatsapp-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WhatsApp bot that sends the weekend planning (Planes de Fin de Semana) to our chat, running on the Losali VPS.",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=20" },
+  "main": "src/index.js",
+  "bin": { "planes": "src/index.js" },
+  "scripts": {
+    "start": "node src/index.js send",
+    "preview": "node src/index.js preview",
+    "send": "node src/index.js send",
+    "login": "node src/index.js login",
+    "status": "node src/index.js status",
+    "listen": "node src/index.js listen",
+    "check": "node --check src/index.js && node scripts/check-syntax.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
