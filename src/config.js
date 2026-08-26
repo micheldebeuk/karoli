@@ -99,6 +99,18 @@ function load() {
       templateName: process.env.WA_CLOUD_TEMPLATE_NAME || '',
       templateLang: process.env.WA_CLOUD_TEMPLATE_LANG || 'es',
     },
+    control: {
+      enabled: bool('PLANES_CONTROL_ENABLED', false),
+      // Loopback by default: the token is the only credential, so it must not
+      // cross a public interface without TLS in front.
+      host: process.env.PLANES_CONTROL_HOST || '127.0.0.1',
+      port: int('PLANES_CONTROL_PORT', 3010),
+      token: process.env.PLANES_CONTROL_TOKEN || '',
+      sendLimit: int('PLANES_CONTROL_SEND_LIMIT', 6),
+      sendWindowMs: int('PLANES_CONTROL_SEND_WINDOW_MS', 15 * 60 * 1000),
+      // `dispatch` waits on a real WhatsApp send, so give it room.
+      dispatchTimeoutMs: int('PLANES_CONTROL_DISPATCH_TIMEOUT_MS', 120_000),
+    },
     planning: {
       source,
       fixtureFile: path.resolve(ROOT, process.env.PLANNING_FIXTURE || './fixtures/planning.json'),

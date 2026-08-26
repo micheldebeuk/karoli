@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Consola Karolito</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<!-- locked ---------------------------------------------------------------->
+<main class="gate" id="gate" hidden>
+  <form class="gate-card" id="loginForm" autocomplete="on">
+    <h1>Consola Karolito</h1>
+    <p class="gate-sub">Planes de Fin de Semana &middot; bot de WhatsApp</p>
+    <label class="field">
+      <span class="lab">Contraseña</span>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </label>
+    <p class="gate-err" id="loginErr" role="alert" hidden></p>
+    <button type="submit" class="act primary wide" id="loginBtn">Entrar</button>
+  </form>
+</main>
+
+<!-- console --------------------------------------------------------------->
+<div class="shell" id="console" hidden>
+  <div class="masthead">
+    <h1>Consola Karolito</h1>
+    <span class="sub">Planes de Fin de Semana</span>
+    <button type="button" class="act quiet" id="logoutBtn">Salir</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="banner" id="banner" role="alert" hidden></div>
+
+  <div class="cols">
+    <div>
+      <section class="card">
+        <header>
+          <h2>Planes</h2>
+          <div class="seg" role="group" aria-label="Qué planes incluir">
+            <button type="button" id="segWeekend" aria-pressed="true">Este finde</button>
+            <button type="button" id="segAll" aria-pressed="false">Todos</button>
+          </div>
+          <span class="note" id="planCount"></span>
+        </header>
+        <div id="ledger"></div>
+      </section>
+    </div>
+
+    <div class="preview-col">
+      <section class="card">
+        <header>
+          <h2>Mensaje</h2>
+          <span class="note" id="msgNote"></span>
+        </header>
+        <div class="msg-wrap">
+          <div id="msgParts"></div>
+          <div class="meter" id="meter"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <header><h2>Enviar</h2></header>
+        <div class="body">
+          <p class="lede" id="sendLede"></p>
+          <div class="row">
+            <button type="button" class="act" id="dryBtn">Prueba en seco</button>
+            <button type="button" class="act primary" id="sendBtn">Enviar por WhatsApp</button>
+          </div>
+          <div class="outcome" id="outcome" role="status" aria-live="polite" hidden></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <header><h2>Últimos envíos</h2></header>
+        <div id="history"></div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="foot">El envío lo ejecuta el bot en el VPS. Esta página solo se lo pide.</footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>

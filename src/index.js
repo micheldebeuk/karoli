@@ -8,6 +8,7 @@ const { createPlanningSource } = require('./planning');
 const { renderPlanning } = require('./format');
 const { sendPlanning } = require('./send');
 const { createBot } = require('./bot');
+const { createControlServer } = require('./server');
 
 const USAGE = `
 planes — WhatsApp bot for "Planes de Fin de Semana"
@@ -20,7 +21,11 @@ Commands
   login [--qr|--pair N]   Link this machine to WhatsApp (baileys provider only).
                             --qr          print a QR to scan (default)
                             --pair +34…   get an 8-character pairing code instead
-  listen                  Run the bot: stay connected and answer commands.
+  listen [--serve]        Run the bot: stay connected and answer commands.
+                            --serve  also expose the control API (see README)
+  dispatch [--dry-run]    Ask the RUNNING bot to send, over its control API.
+                            This is what the weekly cron uses: it must not open
+                            a second WhatsApp session of its own.
   status [--groups]       Show config + session state. --groups lists group JIDs.
 
 Options
@@ -68,7 +73,9 @@ async function main() {
     case 'login':
       return cmdLogin(cfg, args);
     case 'listen':
-      return cmdListen(cfg);
+      return cmdListen(cfg, args);
+    case 'dispatch':
+      return cmdDispatch(cfg, args);
     case 'status':
       return cmdStatus(cfg, args);
     default:
@@ -120,7 +127,7 @@ async function cmdLogin(cfg, args) {
   }
 }
 
-async function cmdListen(cfg) {
+async function cmdListen(cfg, args = { flags: {} }) {
   validateForSend(cfg);
   const provider = createWhatsAppProvider(cfg);
   const planningSource = createPlanningSource(cfg);
@@ -128,15 +135,71 @@ async function cmdListen(cfg) {
 
   await bot.start();
 
+  // The control API lives in this process on purpose: it is the one that holds
+  // the WhatsApp session, and a second process opening the same session
+  // directory corrupts it.
+  let control = null;
+  if (cfg.control.enabled || args.flags.serve) {
+    control = createControlServer({ cfg, provider, planningSource });
+    await control.listen();
+  }
+
   await new Promise((resolve) => {
     const stop = (signal) => {
       logger.info(`Received ${signal}, shutting down.`);
-      provider.close().finally(resolve);
+      Promise.resolve(control ? control.close() : null)
+        .catch(() => {})
+        .then(() => provider.close())
+        .finally(resolve);
     };
     process.on('SIGINT', () => stop('SIGINT'));
     process.on('SIGTERM', () => stop('SIGTERM'));
   });
   return 0;
+}
+
+/**
+ * Ask the running bot to send. The weekly cron uses this instead of `send`:
+ * `send` opens its own WhatsApp connection, and two processes sharing one
+ * session directory fight over the Signal keys until the device is logged out.
+ */
+async function cmdDispatch(cfg, args) {
+  if (!cfg.control.token) {
+    logger.error('PLANES_CONTROL_TOKEN is not set, so there is no running bot to ask.');
+    return 2;
+  }
+  const url = `http://${cfg.control.host}:${cfg.control.port}/api/send`;
+  const payload = {
+    dryRun: Boolean(args.flags['dry-run']) || cfg.dryRun,
+    upcomingOnly: args.flags.all ? false : cfg.upcomingOnly,
+  };
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${cfg.control.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(cfg.control.dispatchTimeoutMs),
+    });
+  } catch (err) {
+    logger.error(
+      `Could not reach the bot's control API at ${url}: ${err.message}. ` +
+        'Is `planes-bot` running with PLANES_CONTROL_ENABLED=1?',
+    );
+    return 1;
+  }
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok && res.status !== 207) {
+    logger.error(`Control API refused the send (${res.status}): ${body.message || body.error || 'unknown'}`);
+    return 1;
+  }
+  logger.info(
+    `Dispatched: ${body.delivered}/${body.delivered + body.failed} recipient(s), ` +
+      `${body.parts} part(s)${body.dryRun ? ' (dry run)' : ''}.`,
+  );
+  return body.failed ? 1 : 0;
 }
 
 async function cmdStatus(cfg, args) {

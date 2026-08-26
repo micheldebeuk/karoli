@@ -1,0 +1,8 @@
+{
+  "name": "planes-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Vercel console for the Planes de Fin de Semana WhatsApp bot.",
+  "engines": { "node": ">=20" }
+}

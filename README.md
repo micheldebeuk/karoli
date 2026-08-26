@@ -127,8 +127,16 @@ half-way through a send.
 
 The app runs under pm2 as two processes (`ecosystem.config.js`):
 
-* **`planes-bot`** — always on, `listen`, answers commands.
-* **`planes-weekly`** — one shot, Thursdays 19:00 Europe/Madrid, `send`, then exits.
+* **`planes-bot`** — always on: `listen --serve`. Holds the WhatsApp session,
+  answers commands, and serves the control API.
+* **`planes-weekly`** — one shot, Thursdays 19:00 Europe/Madrid: `dispatch`,
+  then exits.
+
+> **Why `dispatch` and not `send`.** The Baileys session directory is a single
+> linked device. Two processes opening it at once fight over the Signal key
+> state until WhatsApp logs the device out. So exactly one process owns the
+> socket, and the weekly job — like the web console — asks it to send over the
+> control API instead of opening a connection of its own.
 
 ```bash
 # on the VPS, as ubuntu
@@ -160,6 +168,43 @@ and refuses to restart into a tree that does not parse.
 > self-hosted runner, adding `--labels losali-vps`), or promote it to an
 > organisation runner shared by both. Until then dispatched runs simply queue.
 
+## The control API
+
+`planes-bot` serves a small HTTP API so other things can drive it without
+touching the WhatsApp session:
+
+| Route | Auth | What |
+| --- | --- | --- |
+| `GET /api/health` | none | liveness for the reverse proxy; leaks no config |
+| `GET /api/status` | bearer | transport, link state, recipients, recent sends |
+| `GET /api/planning` | bearer | the plans plus the exact rendered message parts |
+| `POST /api/preview` | bearer | re-render with exclusions / weekend toggle |
+| `POST /api/send` | bearer | send, honouring `dryRun`, `recipients`, `exclude` |
+| `GET /api/groups` | bearer | group JIDs |
+
+Set `PLANES_CONTROL_TOKEN` (24+ chars) — the server refuses to start without
+one. It binds to `127.0.0.1` by default.
+
+### Exposing the control API
+
+Only needed for the Vercel console. Put TLS in front of it, exactly as the
+losali proxy does for `api.losalidirect.com` — there is a ready nginx vhost at
+[`deploy/planes.losalidirect.com.conf`](deploy/planes.losalidirect.com.conf).
+Never bind the bot itself to a public interface: the bearer token is the only
+credential and plain HTTP would put it on the wire.
+
+## Two consoles
+
+| | Claude Artifact | Vercel site (`web/`) |
+| --- | --- | --- |
+| Reads the **live Google Sheet** | yes, via your Drive connector | no — via the bot's source |
+| **Sends** | no — a published page has no route to the VPS | **yes** |
+| Formats the message | re-implements `src/format.js`, kept honest by `tests/console.test.js` | the bot renders it; nothing to drift |
+| Access | private to you on claude.ai | password + signed session cookie |
+
+They complement each other: the artifact is the one that can see today's sheet,
+the site is the one that can press send. See [`web/README.md`](web/README.md).
+
 ## Layout
 
 ```
@@ -181,6 +226,10 @@ src/
   bot/
     index.js            command routing, vote attribution
     commands.js         the command grammar
+  server.js             control API, in-process with the bot
+web/                    the Vercel console (static page + serverless functions)
+console/                the Claude Artifact console
+deploy/                 install / update scripts, nginx vhost
 ```
 
 ## Tests

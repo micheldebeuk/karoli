@@ -19,6 +19,8 @@ jobs:
       # command parsing, routing, config) and must not need the heavy WhatsApp
       # client to run. src/whatsapp/baileys.js requires it lazily for exactly
       # this reason.
+      # Also covers web/ (the Vercel project), which is ESM — a syntax error in
+      # a serverless function would otherwise only surface at deploy time.
       - name: Syntax check
         run: node scripts/check-syntax.js
 

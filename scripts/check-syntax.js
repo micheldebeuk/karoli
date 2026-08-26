@@ -10,6 +10,9 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIRS = ['src', 'scripts', 'tests'];
+// The Vercel project is ESM, so it needs a different check — a plain
+// `node --check` parses those files as CommonJS and rejects `import`.
+const ESM_DIRS = ['web', 'web/api'];
 
 function walk(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
@@ -22,12 +25,33 @@ function walk(dir, out = []) {
 }
 
 let failed = 0;
-for (const file of DIRS.flatMap((d) => walk(path.join(ROOT, d)))) {
+let checked = 0;
+
+function check(file, esm) {
+  checked += 1;
   try {
-    execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' });
+    if (esm) {
+      execFileSync(process.execPath, ['--input-type=module', '--check'], {
+        input: fs.readFileSync(file),
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } else {
+      execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' });
+    }
   } catch (err) {
     failed += 1;
     process.stderr.write(`FAIL ${path.relative(ROOT, file)}\n${err.stderr}\n`);
+  }
+}
+
+for (const file of DIRS.flatMap((d) => walk(path.join(ROOT, d)))) check(file, false);
+
+const seen = new Set();
+for (const dir of ESM_DIRS) {
+  for (const file of walk(path.join(ROOT, dir))) {
+    if (seen.has(file)) continue;
+    seen.add(file);
+    check(file, true);
   }
 }
 
@@ -35,4 +59,4 @@ if (failed) {
   process.stderr.write(`${failed} file(s) failed the syntax check.\n`);
   process.exit(1);
 }
-process.stdout.write('Syntax check passed.\n');
+process.stdout.write(`Syntax check passed (${checked} files).\n`);

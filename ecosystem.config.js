@@ -21,11 +21,13 @@ const COMMON = {
 module.exports = {
   apps: [
     {
-      // The always-on half: stays linked to WhatsApp and answers PLANES / votes.
+      // The always-on half: holds the WhatsApp session, answers PLANES / votes,
+      // and serves the control API. This is the ONLY process allowed to open
+      // the session directory — see the note on planes-weekly below.
       ...COMMON,
       name: 'planes-bot',
       script: path.join(CWD, 'src/index.js'),
-      args: 'listen',
+      args: 'listen --serve',
       autorestart: true,
       max_restarts: 20,
       restart_delay: 10000,
@@ -38,10 +40,16 @@ module.exports = {
       // The scheduled half: one shot, Thursday 19:00 Europe/Madrid, then exits.
       // `autorestart: false` + `cron_restart` is pm2's way of running a job on a
       // schedule without a separate crontab entry.
+      //
+      // It runs `dispatch`, NOT `send`. `send` would open its own WhatsApp
+      // connection against the same session directory planes-bot already holds,
+      // and two clients sharing one multi-device session fight over the Signal
+      // key state until the device is logged out. `dispatch` just asks the
+      // running bot to do it.
       ...COMMON,
       name: 'planes-weekly',
       script: path.join(CWD, 'src/index.js'),
-      args: 'send',
+      args: 'dispatch',
       autorestart: false,
       cron_restart: '0 19 * * 4',
       out_file: path.join(CWD, 'logs/weekly.out.log'),
