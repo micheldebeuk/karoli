@@ -212,6 +212,18 @@ behaves correctly against a faithful stand-in — not that WhatsApp accepts it.
 The first genuine proof is the pairing run on the VPS; `send --dry-run` shows
 the exact bytes beforehand.
 
+## Consola Karolito
+
+A published Claude Artifact reads the **live** sheet through the viewer's Google
+Drive connector and previews the exact message the bot would send — day
+grouping, vote marks, the 3500-character split and all — then hands over the
+command to run. It curates plans, exports `planning.json` for this repo, and
+generates the `.env` lines.
+
+It cannot press send: a published page has no network route to the VPS. See
+[`console/README.md`](console/README.md). `tests/console.test.js` asserts the
+preview stays byte-for-byte identical to `src/format.js`.
+
 ## What's left
 
 The Google half, in `src/planning/index.js` (`googleSheetsSource`), which today

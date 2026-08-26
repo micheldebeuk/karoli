@@ -1,0 +1,879 @@
+<title>Consola Karolito</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap">
+
+<style>
+  /* ---- palette: azulejo blue + saffron ---------------------------------
+     Light is the base set; the two blocks after it only redefine tokens. */
+  :root {
+    --ground:      #F2F5F8;
+    --surface:     #FFFFFF;
+    --surface-sunk:#E8EEF4;
+    --line:        #D3DDE6;
+    --line-soft:   #E4EBF1;
+    --ink:         #101F2B;
+    --ink-soft:    #4A5F70;
+    --ink-faint:   #7B8D9C;
+    --azul:        #1C6595;
+    --azul-deep:   #12466B;
+    --azul-wash:   #E3EDF5;
+    --saffron:     #B36F12;
+    --saffron-wash:#FBF0DE;
+    --ok:          #267054;
+    --ok-wash:     #DFF0E8;
+    --warn:        #96671A;
+    --warn-wash:   #FAEFD9;
+    --crit:        #9C352F;
+    --crit-wash:   #F9E4E2;
+    --shadow:      0 1px 2px rgba(16,31,43,.06), 0 6px 20px rgba(16,31,43,.06);
+    --radius:      10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0B141C;
+      --surface:     #131F29;
+      --surface-sunk:#0E1922;
+      --line:        #273947;
+      --line-soft:   #1D2C38;
+      --ink:         #DFE9F1;
+      --ink-soft:    #9DB1C1;
+      --ink-faint:   #6C8093;
+      --azul:        #67AEDC;
+      --azul-deep:   #A6D2EE;
+      --azul-wash:   #16303F;
+      --saffron:     #E0A445;
+      --saffron-wash:#33260F;
+      --ok:          #6BC49E;
+      --ok-wash:     #102A20;
+      --warn:        #DCAE5B;
+      --warn-wash:   #2E2410;
+      --crit:        #E68A82;
+      --crit-wash:   #331715;
+      --shadow:      0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #0B141C;
+    --surface:     #131F29;
+    --surface-sunk:#0E1922;
+    --line:        #273947;
+    --line-soft:   #1D2C38;
+    --ink:         #DFE9F1;
+    --ink-soft:    #9DB1C1;
+    --ink-faint:   #6C8093;
+    --azul:        #67AEDC;
+    --azul-deep:   #A6D2EE;
+    --azul-wash:   #16303F;
+    --saffron:     #E0A445;
+    --saffron-wash:#33260F;
+    --ok:          #6BC49E;
+    --ok-wash:     #102A20;
+    --warn:        #DCAE5B;
+    --warn-wash:   #2E2410;
+    --crit:        #E68A82;
+    --crit-wash:   #331715;
+    --shadow:      0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 { font-family: "IBM Plex Serif", ui-serif, Georgia, serif; font-weight: 600; margin: 0; text-wrap: balance; }
+
+  .shell { max-width: 1240px; margin: 0 auto; padding: 28px 22px 64px; }
+
+  /* ---- masthead ------------------------------------------------------- */
+  .masthead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; margin-bottom: 18px; }
+  .masthead h1 { font-size: 27px; letter-spacing: -0.01em; }
+  .masthead .sub { color: var(--ink-soft); font-size: 14px; }
+  .masthead .sheet {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px;
+    color: var(--ink-faint); margin-left: auto;
+  }
+
+  /* ---- status strip: the four facts you check before dispatching ------ */
+  .status {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
+    background: var(--line-soft); border: 1px solid var(--line);
+    border-radius: var(--radius); overflow: hidden; margin-bottom: 22px;
+  }
+  .status .cell { background: var(--surface); padding: 11px 14px; min-width: 0; }
+  .status .k {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--ink-faint); font-weight: 600; margin-bottom: 3px;
+  }
+  .status .v {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .dot.live  { background: var(--ok); }
+  .dot.wait  { background: var(--warn); animation: pulse 1.6s ease-in-out infinite; }
+  .dot.off   { background: var(--ink-faint); }
+  .dot.bad   { background: var(--crit); }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+  @media (prefers-reduced-motion: reduce) { .dot.wait { animation: none } }
+
+  /* ---- two-column console -------------------------------------------- */
+  .cols { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+  @media (max-width: 980px) { .cols { grid-template-columns: minmax(0, 1fr); } .preview-col { position: static !important; } }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .card + .card { margin-top: 18px; }
+  .card > header {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 13px 16px; border-bottom: 1px solid var(--line-soft);
+  }
+  .card > header h2 { font-size: 15px; }
+  .card > header .note { color: var(--ink-faint); font-size: 12.5px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .card .body { padding: 16px; }
+
+  /* ---- controls ------------------------------------------------------- */
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button {
+    font: inherit; font-size: 13px; padding: 5px 12px; border: 0; cursor: pointer;
+    background: var(--surface); color: var(--ink-soft);
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--azul-wash); color: var(--azul-deep); font-weight: 600; }
+  .seg button:hover:not([aria-pressed="true"]) { background: var(--surface-sunk); }
+
+  button.act {
+    font: inherit; font-size: 13px; font-weight: 500; padding: 6px 13px; cursor: pointer;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 7px;
+  }
+  button.act:hover { background: var(--surface-sunk); }
+  button.act:disabled { opacity: .45; cursor: not-allowed; }
+  button.act.primary { background: var(--saffron-wash); border-color: var(--saffron); color: var(--saffron); font-weight: 600; }
+  button.act.primary:hover { filter: brightness(.97); }
+
+  :is(button, input, a, [tabindex]):focus-visible {
+    outline: 2px solid var(--azul); outline-offset: 2px; border-radius: 5px;
+  }
+
+  input[type="text"] {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px;
+    width: 100%; padding: 8px 10px; color: var(--ink);
+    background: var(--surface-sunk); border: 1px solid var(--line); border-radius: 7px;
+  }
+  label.field { display: block; margin-bottom: 14px; }
+  label.field:last-child { margin-bottom: 0; }
+  label.field .lab {
+    display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--ink-faint); font-weight: 600; margin-bottom: 5px;
+  }
+  label.field .hint { display: block; font-size: 12px; color: var(--ink-faint); margin-top: 5px; }
+
+  /* ---- plan ledger ---------------------------------------------------- */
+  .day { padding: 7px 16px; background: var(--surface-sunk); border-bottom: 1px solid var(--line-soft); border-top: 1px solid var(--line-soft); }
+  .day .t { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 700; color: var(--ink-soft); }
+
+  .plan { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); align-items: start; }
+  .plan:last-child { border-bottom: 0; }
+  .plan.out { opacity: .42; }
+  .plan input[type="checkbox"] { width: 15px; height: 15px; margin: 3px 0 0; accent-color: var(--azul); cursor: pointer; }
+  .plan .name { font-weight: 600; font-size: 14.5px; }
+  .plan .id { font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--azul); font-weight: 600; }
+  .plan .meta { color: var(--ink-soft); font-size: 12.5px; margin-top: 2px; }
+  .plan .notes { color: var(--ink-faint); font-size: 12.5px; margin-top: 4px; }
+  .plan .right { text-align: right; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; }
+
+  .chip {
+    display: inline-block; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+    background: var(--azul-wash); color: var(--azul-deep); white-space: nowrap;
+  }
+  .chip.canguro { background: var(--saffron-wash); color: var(--saffron); }
+  .chip.time { font-family: "IBM Plex Mono", ui-monospace, monospace; background: var(--surface-sunk); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .votes { font-size: 11.5px; color: var(--ink-faint); white-space: nowrap; }
+
+  /* ---- message preview ------------------------------------------------ */
+  .preview-col { position: sticky; top: 20px; }
+  .msg-wrap { padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--surface-sunk); border-radius: 0 0 var(--radius) var(--radius); }
+  .msg {
+    background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--azul);
+    border-radius: 4px 10px 10px 4px; padding: 13px 15px;
+    font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 58vh; overflow-y: auto; overflow-x: auto;
+  }
+  .msg strong { font-weight: 600; }
+  .msg a { color: var(--azul); text-decoration: none; overflow-wrap: anywhere; }
+  .msg a:hover { text-decoration: underline; }
+  .msg .part-tag {
+    display: block; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: .09em; color: var(--ink-faint);
+    margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed var(--line);
+  }
+  .meter { display: flex; gap: 14px; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+  .meter b { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; color: var(--ink); }
+
+  /* ---- dispatch ------------------------------------------------------- */
+  pre.cmd {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; line-height: 1.65;
+    background: var(--surface-sunk); border: 1px solid var(--line); border-radius: 7px;
+    padding: 12px 13px; margin: 0; overflow-x: auto; color: var(--ink);
+  }
+  pre.cmd .c { color: var(--ink-faint); }
+  .row { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
+  .row.end { justify-content: flex-end; }
+
+  .plainly {
+    border-left: 3px solid var(--warn); background: var(--warn-wash);
+    padding: 11px 14px; border-radius: 0 7px 7px 0; font-size: 13px; color: var(--ink);
+  }
+  .plainly b { font-weight: 600; }
+
+  .empty { padding: 40px 24px; text-align: center; color: var(--ink-soft); }
+  .empty h3 { font-size: 16px; margin-bottom: 7px; }
+  .empty p { margin: 0 auto; max-width: 46ch; font-size: 13.5px; }
+  .empty code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; background: var(--surface-sunk); padding: 1px 5px; border-radius: 4px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(8px);
+    background: var(--ink); color: var(--ground); font-size: 13px; font-weight: 500;
+    padding: 9px 17px; border-radius: 999px; box-shadow: var(--shadow);
+    opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease; z-index: 50;
+  }
+  .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none } }
+
+  footer.foot { margin-top: 26px; color: var(--ink-faint); font-size: 12px; text-align: center; }
+</style>
+
+<div class="shell">
+  <div class="masthead">
+    <h1>Consola Karolito</h1>
+    <span class="sub">Planes de Fin de Semana &middot; bot de WhatsApp</span>
+    <span class="sheet" id="sheetTag">hoja: Planes Karolito</span>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="cols">
+    <div>
+      <section class="card">
+        <header>
+          <h2>Planes</h2>
+          <div class="seg" role="group" aria-label="Qué planes incluir">
+            <button type="button" id="segWeekend" aria-pressed="true">Este finde</button>
+            <button type="button" id="segAll" aria-pressed="false">Todos</button>
+          </div>
+          <span class="note" id="planCount"></span>
+        </header>
+        <div id="ledger"></div>
+      </section>
+
+      <section class="card">
+        <header><h2>Entrega</h2></header>
+        <div class="body">
+          <label class="field">
+            <span class="lab">Destinatarios</span>
+            <input type="text" id="recipients" value="+34600111222" spellcheck="false"
+                   aria-describedby="recipHint">
+            <span class="hint" id="recipHint">Números en E.164 o JIDs de grupo (<code>…@g.us</code>), separados por comas. Solo <code>baileys</code> puede escribir en grupos.</span>
+          </label>
+          <label class="field">
+            <span class="lab">Transporte</span>
+            <div class="seg" role="group" aria-label="Transporte">
+              <button type="button" class="prov" data-p="baileys" aria-pressed="true">baileys</button>
+              <button type="button" class="prov" data-p="cloud" aria-pressed="false">cloud</button>
+              <button type="button" class="prov" data-p="dry-run" aria-pressed="false">dry-run</button>
+            </div>
+          </label>
+        </div>
+      </section>
+    </div>
+
+    <div class="preview-col">
+      <section class="card">
+        <header>
+          <h2>Mensaje</h2>
+          <span class="note" id="msgNote"></span>
+        </header>
+        <div class="msg-wrap">
+          <div id="msgParts"></div>
+          <div class="meter" id="meter"></div>
+          <div class="row end">
+            <button type="button" class="act" id="copyMsg">Copiar mensaje</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <header><h2>Lanzar el envío</h2></header>
+        <div class="body">
+          <div class="plainly" style="margin-bottom:14px">
+            Esta consola <b>compone</b> el mensaje y prepara el comando. No puede enviarlo:
+            una página publicada no tiene salida de red hacia el VPS. Copia el comando y
+            ejecútalo en el VPS, o lanza el workflow <b>VPS ops</b> en GitHub.
+          </div>
+          <pre class="cmd" id="cmd"></pre>
+          <div class="row end" style="margin-top:12px">
+            <button type="button" class="act" id="dlJson">Descargar planning.json</button>
+            <button type="button" class="act primary" id="copyCmd">Copiar comando</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="foot" id="foot"></footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // The sheet this bot reads. Same id as PLANNING_SHEET_ID in the app's .env.
+  const SHEET_ID = '1Nvnh1YvoEMrZgFIpInuQNvqck8vX6fN2XNKva7KW2QY';
+  const MAX_CHARS = 3500;      // must match src/format.js
+  const SUFFIX_BUDGET = 16;    // ditto
+
+  const state = {
+    plans: [],
+    excluded: new Set(),
+    upcomingOnly: true,
+    provider: 'baileys',
+    recipients: '+34600111222',
+    source: 'booting',        // booting | live | unavailable | error
+    detail: '',
+    storedAt: null,
+  };
+
+  // ---------------------------------------------------------------- utils
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  let toastTimer;
+  function toast(text) {
+    const el = $('toast');
+    el.textContent = text;
+    el.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('on'), 2200);
+  }
+
+  async function copy(text, okMessage) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return toast(okMessage);
+      }
+      throw new Error('no clipboard');
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-1000px;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
+      toast(ok ? okMessage : 'No se pudo copiar — selecciona el texto a mano');
+    }
+  }
+
+  // ------------------------------------------------- sheet -> plan objects
+  // Google Drive returns a Sheet as a markdown table. The real header is not
+  // row 0: there is a blank row and an alignment row above it, so find the row
+  // that actually names the columns.
+  const COLUMNS = {
+    id: 'id', plan: 'plan', categoria: 'categoria', tipo: 'tipo',
+    diapropuesto: 'dia', horario: 'horario', estado: 'estado',
+    votoolivier: 'votoOlivier', votokarina: 'votoKarina', fechadelvoto: 'fechaVoto',
+    enlaceoficial: 'enlace', googlemaps: 'maps', notas: 'notas',
+  };
+  const key = (s) => String(s).toLowerCase().normalize('NFD')
+    .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+
+  const unescapeCell = (s) => String(s).replace(/\\([&!*_|\\])/g, '$1').trim();
+
+  function parseSheet(markdown) {
+    const rows = String(markdown).split('\n')
+      .filter((l) => l.trim().startsWith('|'))
+      .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map(unescapeCell))
+      .filter((cells) => !cells.every((c) => /^:?-+:?$/.test(c) || c === ''));
+
+    const headerAt = rows.findIndex((cells) => {
+      const keys = cells.map(key);
+      return keys.includes('id') && keys.includes('plan');
+    });
+    if (headerAt < 0) return [];
+
+    const fields = rows[headerAt].map((name) => COLUMNS[key(name)] || null);
+    return rows.slice(headerAt + 1)
+      .filter((cells) => cells.some((c) => c !== ''))
+      .map((cells, i) => {
+        const raw = {};
+        fields.forEach((field, col) => { if (field) raw[field] = cells[col] || ''; });
+        return normalizePlan(raw, i);
+      });
+  }
+
+  const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+
+  function normalizePlan(raw, index) {
+    const p = {
+      id: '', plan: '', categoria: '', tipo: '', dia: '', horario: '', estado: '',
+      votoOlivier: '', votoKarina: '', fechaVoto: '', enlace: '', maps: '', notas: '',
+      ...raw,
+    };
+    if (!p.id) p.id = 'P' + (index + 1);
+
+    const m = /(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/.exec(p.dia);
+    p.date = null;
+    if (m) {
+      let year = Number(m[3]); if (year < 100) year += 2000;
+      const d = new Date(year, Number(m[2]) - 1, Number(m[1]), 12);
+      if (!Number.isNaN(d.getTime()) && d.getDate() === Number(m[1])) p.date = d;
+    }
+    p.dayLabel = p.date
+      ? DAY_NAMES[p.date.getDay()] + ' ' + p.dia.replace(/^\D+/, '').trim()
+      : (p.dia || 'Sin fecha');
+    return p;
+  }
+
+  // ------------------------------------------------- weekend + formatting
+  // Ports src/format.js and src/planning/schema.js so the preview is the
+  // message, byte for byte — not an approximation of it.
+  const MONTHS = ['enero','febrero','marzo','abril','mayo','junio',
+                  'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+  function upcomingWeekend(now) {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dow = start.getDay();
+    const sat = new Date(start);
+    sat.setDate(start.getDate() + (dow === 0 ? -1 : 6 - dow));
+    const end = new Date(sat);
+    end.setDate(sat.getDate() + 1);
+    end.setHours(23, 59, 59, 999);
+    return { start: sat, end };
+  }
+
+  function isUpcoming(p, now) {
+    if (!p.date) return false;
+    const { start, end } = upcomingWeekend(now);
+    return p.date >= start && p.date <= end;
+  }
+
+  function weekendSubtitle(now) {
+    const { start, end } = upcomingWeekend(now);
+    const same = start.getMonth() === end.getMonth();
+    const left = start.getDate() + (same ? '' : ' de ' + MONTHS[start.getMonth()]);
+    return 'Sábado ' + left + ' y domingo ' + end.getDate() + ' de ' + MONTHS[end.getMonth()];
+  }
+
+  function tipoIcon(t) {
+    const s = t.toLowerCase();
+    if (s.includes('canguro') || s.includes('adulto')) return '🍸';
+    if (s.includes('peque')) return '👶';
+    return '•';
+  }
+  function catIcon(c) {
+    const s = c.toLowerCase();
+    if (s.includes('mar') || s.includes('playa')) return '🏖️';
+    if (s.includes('naturaleza') || s.includes('bosque')) return '🌲';
+    if (s.includes('pueblo')) return '🏘️';
+    if (s.includes('festa') || s.includes('fiesta')) return '🎉';
+    if (s.includes('exposicion') || s.includes('cultura')) return '🎨';
+    return '📌';
+  }
+  function voteMark(v) {
+    const s = v.trim().toLowerCase();
+    if (!s) return '—';
+    if (/^(si|sí|s|yes|y|1|ok)$/.test(s)) return '✅';
+    if (/^(no|n|0)$/.test(s)) return '❌';
+    return v.trim();
+  }
+
+  function renderPlan(p) {
+    const lines = [catIcon(p.categoria) + ' *' + p.id + ' · ' + p.plan + '*'];
+    const meta = [p.horario, p.categoria].filter(Boolean).join(' · ');
+    if (meta) lines.push('🕒 ' + meta);
+    if (p.tipo) lines.push(tipoIcon(p.tipo) + ' ' + p.tipo);
+    if (p.notas) lines.push('📝 ' + p.notas);
+    if (p.votoOlivier || p.votoKarina) {
+      lines.push('🗳️ Olivier ' + voteMark(p.votoOlivier) + ' · Karina ' + voteMark(p.votoKarina));
+    }
+    if (p.enlace) lines.push('🔗 ' + p.enlace);
+    if (p.maps) lines.push('📍 ' + p.maps);
+    return lines.join('\n');
+  }
+
+  function sortPlans(plans) {
+    return plans.slice().sort((a, b) => {
+      if (a.date && b.date && a.date.getTime() !== b.date.getTime()) return a.date - b.date;
+      if (a.date && !b.date) return -1;
+      if (!a.date && b.date) return 1;
+      if (a.horario !== b.horario) return a.horario.localeCompare(b.horario);
+      return a.id.localeCompare(b.id);
+    });
+  }
+
+  function groupByDay(plans) {
+    const groups = [];
+    const seen = new Map();
+    for (const p of sortPlans(plans)) {
+      let g = seen.get(p.dayLabel);
+      if (!g) { g = { dayLabel: p.dayLabel, plans: [] }; seen.set(p.dayLabel, g); groups.push(g); }
+      g.plans.push(p);
+    }
+    return groups;
+  }
+
+  const EDGE = /^(?:\s*·\s*)+|(?:\s*·\s*)+$/g;
+
+  function hardChunk(line, limit) {
+    if (line.length <= limit) return [line];
+    const out = [];
+    for (let i = 0; i < line.length; i += limit) out.push(line.slice(i, i + limit));
+    return out;
+  }
+  function splitOversized(block, limit) {
+    if (block.length <= limit) return [block];
+    const pieces = [];
+    let cur = '';
+    for (const line of block.split('\n')) {
+      for (const chunk of hardChunk(line, limit)) {
+        const cand = cur ? cur + '\n' + chunk : chunk;
+        if (cand.length > limit && cur) { pieces.push(cur); cur = chunk; } else { cur = cand; }
+      }
+    }
+    if (cur) pieces.push(cur);
+    return pieces;
+  }
+  function paginate(header, blocks, footer) {
+    const budget = MAX_CHARS - SUFFIX_BUDGET;
+    const parts = [];
+    let cur = header;
+    const flush = () => { if (cur !== header) { parts.push(cur); cur = header; } };
+    for (const block of blocks) {
+      for (const piece of splitOversized(block, budget - header.length - 2)) {
+        const cand = cur + '\n\n' + piece;
+        if (cand.length > budget && cur !== header) { flush(); cur = header + '\n\n' + piece; }
+        else { cur = cand; }
+      }
+    }
+    const withFooter = cur + '\n\n' + footer;
+    if (withFooter.length <= budget) parts.push(withFooter);
+    else { flush(); parts.push(header + '\n\n' + footer); }
+    if (parts.length === 1) return parts;
+    return parts.map((p, i) => p + '\n\n_(' + (i + 1) + '/' + parts.length + ')_');
+  }
+
+  function buildMessage(plans, upcomingOnly, now) {
+    let list = plans;
+    let filtered = false;
+    if (upcomingOnly) {
+      const subset = plans.filter((p) => isUpcoming(p, now));
+      if (subset.length) { list = subset; filtered = true; }
+    }
+    const header = '*Planes de Fin de Semana*\n_' +
+      (filtered ? weekendSubtitle(now) : 'Todos los planes propuestos') + '_';
+
+    if (!list.length) return { parts: [header + '\n\nNo hay planes propuestos todavía. 🤷'], used: [] };
+
+    const blocks = [];
+    for (const g of groupByDay(list)) {
+      blocks.push('*' + g.dayLabel.toUpperCase() + '*');
+      for (const p of g.plans) blocks.push(renderPlan(p));
+    }
+    const footer = '➡️ Vota respondiendo *E1 SI* o *C2 NO*.\n' +
+      'Escribe *PLANES* para ver la lista otra vez, *AYUDA* para los comandos.';
+    return { parts: paginate(header, blocks, footer), used: list };
+  }
+
+  // ---------------------------------------- WhatsApp markdown -> safe HTML
+  const URL_RE = /(https?:\/\/[^\s]+)/g;
+
+  function fmtSegment(text) {
+    let h = esc(text);
+    h = h.replace(/(^|[\s(])\*(\S(?:[^*\n]*\S)?)\*(?=[\s.,;:!?)]|$)/g, '$1<strong>$2</strong>');
+    h = h.replace(/(^|[\s(])_(\S(?:[^_\n]*\S)?)_(?=[\s.,;:!?)]|$)/g, '$1<em>$2</em>');
+    h = h.replace(/(^|[\s(])~(\S(?:[^~\n]*\S)?)~(?=[\s.,;:!?)]|$)/g, '$1<s>$2</s>');
+    return h;
+  }
+
+  // Format only outside URLs, so an underscore in a link never italicises it.
+  function toHtml(text) {
+    let out = '';
+    let last = 0;
+    for (const m of String(text).matchAll(URL_RE)) {
+      out += fmtSegment(text.slice(last, m.index));
+      const url = m[0];
+      out += '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(url) + '</a>';
+      last = m.index + url.length;
+    }
+    return out + fmtSegment(text.slice(last));
+  }
+
+  // -------------------------------------------------------------- render
+  function statusCells() {
+    const s = {
+      booting:     ['wait', 'conectando…'],
+      live:        ['live', 'hoja en vivo'],
+      unavailable: ['off',  'sin conector'],
+      error:       ['bad',  'error'],
+    }[state.source];
+
+    const freshness = state.storedAt
+      ? new Date(state.storedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      : '—';
+
+    const recips = state.recipients.split(',').map((r) => r.trim()).filter(Boolean);
+    const groups = recips.filter((r) => r.endsWith('@g.us')).length;
+
+    return [
+      ['Origen', '<span class="dot ' + s[0] + '"></span>' + esc(s[1])],
+      ['Actualizado', esc(freshness)],
+      ['Transporte', esc(state.provider)],
+      ['Destinatarios', recips.length + (groups ? ' · ' + groups + ' grupo' + (groups > 1 ? 's' : '') : '')],
+    ];
+  }
+
+  function renderStatus() {
+    $('status').innerHTML = statusCells()
+      .map(([k, v]) => '<div class="cell"><div class="k">' + k + '</div><div class="v">' + v + '</div></div>')
+      .join('');
+  }
+
+  function renderLedger() {
+    const el = $('ledger');
+    if (state.source === 'booting') {
+      el.innerHTML = '<div class="empty"><h3>Leyendo la hoja…</h3><p>Pidiendo <code>Planes Karolito</code> a tu conector de Google Drive.</p></div>';
+      $('planCount').textContent = '';
+      return;
+    }
+    if (!state.plans.length) {
+      const why = state.source === 'unavailable'
+        ? 'Esta página lee la hoja con <em>tu</em> conector de Google Drive. Ábrela desde claude.ai con el conector activo y los planes aparecerán aquí.'
+        : esc(state.detail || 'La hoja no devolvió ninguna fila reconocible.');
+      el.innerHTML = '<div class="empty"><h3>Sin planes</h3><p>' + why + '</p></div>';
+      $('planCount').textContent = '';
+      return;
+    }
+
+    const now = new Date();
+    const visible = state.upcomingOnly && state.plans.some((p) => isUpcoming(p, now))
+      ? state.plans.filter((p) => isUpcoming(p, now))
+      : state.plans;
+
+    let html = '';
+    for (const g of groupByDay(visible)) {
+      html += '<div class="day"><span class="t">' + esc(g.dayLabel) + '</span></div>';
+      for (const p of g.plans) {
+        const on = !state.excluded.has(p.id);
+        const canguro = /canguro|adulto/i.test(p.tipo);
+        html += '<div class="plan' + (on ? '' : ' out') + '">' +
+          '<input type="checkbox" ' + (on ? 'checked' : '') + ' data-id="' + esc(p.id) + '" ' +
+            'aria-label="Incluir ' + esc(p.id) + ' ' + esc(p.plan) + '">' +
+          '<div><div class="name"><span class="id">' + esc(p.id) + '</span> · ' + esc(p.plan) + '</div>' +
+          '<div class="meta">' + esc(p.categoria) + '</div>' +
+          (p.notas ? '<div class="notes">' + esc(p.notas) + '</div>' : '') + '</div>' +
+          '<div class="right">' +
+            (p.horario ? '<span class="chip time">' + esc(p.horario) + '</span>' : '') +
+            (p.tipo ? '<span class="chip' + (canguro ? ' canguro' : '') + '">' + esc(p.tipo) + '</span>' : '') +
+            '<span class="votes">O ' + voteMark(p.votoOlivier) + ' · K ' + voteMark(p.votoKarina) + '</span>' +
+          '</div></div>';
+      }
+    }
+    el.innerHTML = html;
+    el.querySelectorAll('input[type=checkbox]').forEach((box) => {
+      box.addEventListener('change', () => {
+        if (box.checked) state.excluded.delete(box.dataset.id);
+        else state.excluded.add(box.dataset.id);
+        render();
+      });
+    });
+
+    const included = visible.filter((p) => !state.excluded.has(p.id)).length;
+    $('planCount').textContent = included + ' de ' + visible.length + ' incluidos';
+  }
+
+  function includedPlans() {
+    return state.plans.filter((p) => !state.excluded.has(p.id));
+  }
+
+  function renderMessage() {
+    const { parts } = buildMessage(includedPlans(), state.upcomingOnly, new Date());
+
+    $('msgParts').innerHTML = parts.map((p, i) =>
+      '<div class="msg">' +
+        (parts.length > 1 ? '<span class="part-tag">mensaje ' + (i + 1) + ' de ' + parts.length + '</span>' : '') +
+        toHtml(p) +
+      '</div>').join('');
+
+    const longest = parts.reduce((n, p) => Math.max(n, p.length), 0);
+    $('meter').innerHTML =
+      '<span>caracteres <b>' + parts.reduce((n, p) => n + p.length, 0) + '</b></span>' +
+      '<span>mensajes <b>' + parts.length + '</b></span>' +
+      '<span>más largo <b>' + longest + '</b> / ' + MAX_CHARS + '</span>';
+    $('msgNote').textContent = parts.length > 1
+      ? 'se envía en ' + parts.length + ' partes'
+      : 'cabe en un mensaje';
+
+    return parts;
+  }
+
+  function renderCommand() {
+    const recips = state.recipients.split(',').map((r) => r.trim()).filter(Boolean).join(',');
+    const flags = state.upcomingOnly ? '' : ' --all';
+    const lines = [
+      '<span class="c"># en el VPS, como ubuntu</span>',
+      'cd /home/ubuntu/plans',
+      '',
+      '<span class="c"># .env</span>',
+      'WHATSAPP_PROVIDER=' + esc(state.provider),
+      'WHATSAPP_RECIPIENTS=' + esc(recips || '(sin destinatarios)'),
+      'PLANNING_UPCOMING_ONLY=' + (state.upcomingOnly ? '1' : '0'),
+      '',
+      '<span class="c"># prueba en seco, luego el envío real</span>',
+      'node src/index.js send --dry-run' + flags,
+      'node src/index.js send' + flags,
+    ];
+    $('cmd').innerHTML = lines.join('\n');
+  }
+
+  function plainCommand() {
+    const recips = state.recipients.split(',').map((r) => r.trim()).filter(Boolean).join(',');
+    const flags = state.upcomingOnly ? '' : ' --all';
+    return [
+      'cd /home/ubuntu/plans',
+      'WHATSAPP_PROVIDER=' + state.provider,
+      'WHATSAPP_RECIPIENTS=' + recips,
+      'PLANNING_UPCOMING_ONLY=' + (state.upcomingOnly ? '1' : '0'),
+      'node src/index.js send --dry-run' + flags,
+      'node src/index.js send' + flags,
+    ].join('\n');
+  }
+
+  function render() {
+    renderStatus();
+    renderLedger();
+    renderMessage();
+    renderCommand();
+  }
+
+  // ------------------------------------------------------------- controls
+  function setWeekend(upcomingOnly) {
+    state.upcomingOnly = upcomingOnly;
+    $('segWeekend').setAttribute('aria-pressed', String(upcomingOnly));
+    $('segAll').setAttribute('aria-pressed', String(!upcomingOnly));
+    render();
+  }
+  $('segWeekend').addEventListener('click', () => setWeekend(true));
+  $('segAll').addEventListener('click', () => setWeekend(false));
+
+  document.querySelectorAll('.prov').forEach((b) => {
+    b.addEventListener('click', () => {
+      state.provider = b.dataset.p;
+      document.querySelectorAll('.prov').forEach((o) =>
+        o.setAttribute('aria-pressed', String(o === b)));
+      render();
+    });
+  });
+
+  $('recipients').addEventListener('input', (e) => {
+    state.recipients = e.target.value;
+    renderStatus();
+    renderCommand();
+  });
+
+  $('copyMsg').addEventListener('click', () => {
+    const parts = buildMessage(includedPlans(), state.upcomingOnly, new Date()).parts;
+    copy(parts.join('\n\n———\n\n'), 'Mensaje copiado');
+  });
+  $('copyCmd').addEventListener('click', () => copy(plainCommand(), 'Comando copiado'));
+
+  // planning.json in exactly the shape src/planning/index.js reads.
+  $('dlJson').addEventListener('click', async () => {
+    const plans = includedPlans().map((p) => ({
+      id: p.id, plan: p.plan, categoria: p.categoria, tipo: p.tipo, dia: p.dia,
+      horario: p.horario, estado: p.estado, votoOlivier: p.votoOlivier,
+      votoKarina: p.votoKarina, fechaVoto: p.fechaVoto, enlace: p.enlace,
+      maps: p.maps, notas: p.notas,
+    }));
+    if (!plans.length) return toast('No hay planes que exportar');
+
+    const json = JSON.stringify({
+      title: 'Planes de Fin de Semana',
+      source: 'Planes Karolito (exportado desde la consola)',
+      sheetId: SHEET_ID,
+      plans,
+    }, null, 2) + '\n';
+
+    const downloads = await claude.use('downloads');
+    if (!downloads) return copy(json, 'Descarga no disponible — JSON copiado');
+    try {
+      await downloads.save({ filename: 'planning.json', data: json });
+      toast('planning.json guardado');
+    } catch (err) {
+      toast(err && err.code === 'cancelled' ? 'Descarga cancelada' : 'No se pudo guardar el archivo');
+    }
+  });
+
+  // -------------------------------------------------- live sheet via MCP
+  const ERRORS = {
+    needs_reauth: 'Google Drive necesita que vuelvas a autorizarlo en claude.ai.',
+    server_not_connected: 'El conector de Google Drive no está conectado.',
+    server_not_found: 'No encuentro el conector de Google Drive.',
+    not_granted: 'No diste permiso para leer Google Drive desde esta página.',
+    blocked_by_policy: 'La política de tu organización bloquea esta lectura.',
+    rate_limited: 'Google Drive está limitando las peticiones. Prueba en un momento.',
+    tool_error: 'Google Drive no pudo leer la hoja. ¿Sigue compartida contigo?',
+  };
+
+  render();
+
+  (async () => {
+    const mcp = await claude.use('mcp');
+    if (!mcp) {
+      state.source = 'unavailable';
+      return render();
+    }
+
+    mcp.watchTool(
+      'Google Drive',
+      'read_file_content',
+      { fileId: SHEET_ID },
+      (ev) => {
+        if (ev.type === 'error') {
+          // Keep whatever is on screen if we already have plans: a blip should
+          // not blank the console mid-use.
+          if (!state.plans.length) {
+            state.source = 'error';
+            state.detail = ERRORS[ev.error.code] || ('Google Drive respondió: ' + ev.error.code + '.');
+          }
+          return render();
+        }
+        const payload = ev.result && ev.result.payload;
+        const content = payload && typeof payload === 'object' ? payload.fileContent : null;
+        const plans = content ? parseSheet(content) : [];
+
+        state.plans = plans;
+        state.source = plans.length ? 'live' : 'error';
+        if (!plans.length) state.detail = 'La hoja se leyó, pero no encontré la fila de cabeceras (ID, Plan, …).';
+        state.storedAt = (ev.result.cache && ev.result.cache.storedAt) || Date.now();
+        render();
+      },
+      { refetchInterval: 180000 },
+    );
+  })();
+
+  $('foot').textContent =
+    'Consola de solo lectura sobre la hoja. El envío lo hace el bot en el VPS.';
+})();
+</script>
