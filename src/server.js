@@ -260,6 +260,42 @@ function createControlServer({ cfg, provider, planningSource, commit = null }) {
       json(res, result.failed.length ? 207 : 200, summary);
     },
 
+    // Route B's ingest point: a scheduled Claude Routine reads the Google Sheet
+    // with the operator's own Drive connector and POSTs the rows here, so no
+    // Google credentials ever live on the VPS.
+    'POST /api/planning/import': async (req, res, body) => {
+      if (typeof planningSource.save !== 'function') {
+        return json(res, 409, {
+          error: 'source_not_writable',
+          message: `PLANNING_SOURCE=${planningSource.name} cannot accept a push. Set PLANNING_SOURCE=pushed.`,
+        });
+      }
+      if (!Array.isArray(body.plans)) {
+        return json(res, 400, { error: 'bad_request', message: 'Expected { plans: [...] }.' });
+      }
+      if (!body.plans.length) {
+        // Never let a bad scrape silently wipe a good planning.
+        return json(res, 400, {
+          error: 'empty_planning',
+          message: 'Refusing to replace the planning with zero plans.',
+        });
+      }
+      if (body.plans.length > 500) {
+        return json(res, 400, { error: 'too_many_plans', message: 'At most 500 plans.' });
+      }
+
+      const saved = planningSource.save(body);
+      remember({ kind: 'import', plans: saved.plans.length, title: saved.title });
+      logger.info(`Planning pushed: ${saved.plans.length} plan(s) — "${saved.title}".`);
+      json(res, 200, {
+        ok: true,
+        title: saved.title,
+        plans: saved.plans.length,
+        pushedAt: saved.pushedAt,
+        parts: renderPlanning(saved, { upcomingOnly: cfg.upcomingOnly }).length,
+      });
+    },
+
     'GET /api/groups': async (req, res) => {
       json(res, 200, { groups: await provider.listGroups() });
     },

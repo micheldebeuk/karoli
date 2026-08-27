@@ -9,6 +9,8 @@ const { renderPlanning } = require('./format');
 const { sendPlanning } = require('./send');
 const { createBot } = require('./bot');
 const { createControlServer } = require('./server');
+const { createQueue } = require('./ask/queue');
+const { createAskWorker } = require('./ask/worker');
 
 const USAGE = `
 planes — WhatsApp bot for "Planes de Fin de Semana"
@@ -131,9 +133,18 @@ async function cmdListen(cfg, args = { flags: {} }) {
   validateForSend(cfg);
   const provider = createWhatsAppProvider(cfg);
   const planningSource = createPlanningSource(cfg);
-  const bot = createBot({ cfg, provider, planningSource });
+  // Route A lives in this process too: it needs the WhatsApp socket to reply,
+  // and only this process may hold the session.
+  const askQueue = cfg.ask.enabled ? createQueue({ dir: cfg.ask.queueDir, maxAttempts: cfg.ask.maxAttempts }) : null;
+  const bot = createBot({ cfg, provider, planningSource, askQueue });
 
   await bot.start();
+
+  let askWorker = null;
+  if (askQueue) {
+    askWorker = createAskWorker({ cfg, provider, queue: askQueue });
+    askWorker.start();
+  }
 
   // The control API lives in this process on purpose: it is the one that holds
   // the WhatsApp session, and a second process opening the same session
@@ -147,6 +158,7 @@ async function cmdListen(cfg, args = { flags: {} }) {
   await new Promise((resolve) => {
     const stop = (signal) => {
       logger.info(`Received ${signal}, shutting down.`);
+      if (askWorker) askWorker.stop();
       Promise.resolve(control ? control.close() : null)
         .catch(() => {})
         .then(() => provider.close())
@@ -217,6 +229,7 @@ async function cmdStatus(cfg, args) {
       `upcoming only   ${cfg.upcomingOnly}`,
       `dry run         ${cfg.dryRun}`,
       `session linked  ${provider.isRegistered()}`,
+      `ask (claude -p) ${cfg.ask.enabled ? `on — model ${cfg.ask.model}, cap ${cfg.ask.dailyLimit}/day` : 'off'}`,
       '',
     ].join('\n'),
   );
@@ -226,6 +239,15 @@ async function cmdStatus(cfg, args) {
     process.stdout.write(`planning        ${planning.plans.length} plan(s) — "${planning.title}"\n`);
   } catch (err) {
     process.stdout.write(`planning        UNAVAILABLE: ${err.message}\n`);
+  }
+
+  if (cfg.ask.enabled) {
+    const q = createQueue({ dir: cfg.ask.queueDir, maxAttempts: cfg.ask.maxAttempts });
+    const { pending, ready } = q.stats();
+    process.stdout.write(
+      `ask queue       ${pending} pending (${ready} ready), ` +
+        `${q.completedSince(24 * 3600_000)} answered in 24h\n`,
+    );
   }
 
   if (args.flags.groups) {

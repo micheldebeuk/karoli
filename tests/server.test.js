@@ -294,3 +294,111 @@ test('an internal failure does not leak a stack trace to the caller', async (t) 
   assert.equal(payload.error, 'internal_error');
   assert.doesNotMatch(JSON.stringify(payload), /secret internal detail/);
 });
+
+// --- Route B: the Routine's planning push ---------------------------------
+
+const fsx = require('node:fs');
+const osx = require('node:os');
+const pathx = require('node:path');
+const { createPlanningSource } = require('../src/planning');
+
+/** A control server backed by the real `pushed` source, in a temp directory. */
+async function servePushed(t) {
+  const dir = fsx.mkdtempSync(pathx.join(osx.tmpdir(), 'planes-push-'));
+  const cfg = baseConfig({
+    upcomingOnly: false,
+    ...control(),
+    planning: {
+      source: 'pushed',
+      fixtureFile: '',
+      sheetId: 'SHEET',
+      sheetRange: 'A1:M',
+      pushedFile: pathx.join(dir, 'planning-pushed.json'),
+    },
+  });
+  const planningSource = createPlanningSource(cfg);
+  const api = createControlServer({ cfg, provider: fakeProvider(), planningSource });
+  await api.listen();
+  const { port } = api.server.address();
+  t.after(() => api.close());
+
+  const call = (path, { method = 'GET', body, token = TOKEN } = {}) =>
+    fetch(`http://127.0.0.1:${port}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }).then(async (r) => ({ status: r.status, payload: await r.json().catch(() => ({})) }));
+
+  return { call, cfg, planningSource };
+}
+
+const SHEET_ROWS = [
+  { ID: 'E1', Plan: 'Caldetes', Categoria: 'Escapada - mar y playa', 'Dia propuesto': 'Sabado 29/08/2026', Horario: '09:30-14:00' },
+  { ID: 'C2', Plan: 'El Born CCM', Categoria: 'Cultura - exposicion', 'Dia propuesto': 'Domingo 30/08/2026', Horario: '17:00-19:00' },
+];
+
+test('a pushed planning becomes the one the bot serves', async (t) => {
+  const { call } = await servePushed(t);
+
+  const before = await call('/api/planning');
+  assert.equal(before.status, 500, 'nothing pushed yet');
+
+  // The Routine sends rows keyed by the sheet's own column titles.
+  const imported = await call('/api/planning/import', { method: 'POST', body: { plans: SHEET_ROWS } });
+  assert.equal(imported.status, 200);
+  assert.equal(imported.payload.plans, 2);
+  assert.ok(imported.payload.pushedAt);
+
+  const after = await call('/api/planning');
+  assert.equal(after.status, 200);
+  assert.deepEqual(after.payload.plans.map((p) => p.id), ['E1', 'C2']);
+  assert.match(after.payload.parts[0], /Caldetes/);
+});
+
+test('a pushed planning survives a restart', async (t) => {
+  const { call, cfg } = await servePushed(t);
+  await call('/api/planning/import', { method: 'POST', body: { plans: SHEET_ROWS } });
+
+  // A brand-new source over the same file, as after a redeploy.
+  const fresh = await createPlanningSource(cfg).load();
+  assert.equal(fresh.plans.length, 2);
+  assert.equal(fresh.plans[0].plan, 'Caldetes');
+});
+
+test('an empty push is refused rather than wiping a good planning', async (t) => {
+  const { call } = await servePushed(t);
+  await call('/api/planning/import', { method: 'POST', body: { plans: SHEET_ROWS } });
+
+  const empty = await call('/api/planning/import', { method: 'POST', body: { plans: [] } });
+  assert.equal(empty.status, 400);
+  assert.equal(empty.payload.error, 'empty_planning');
+
+  const still = await call('/api/planning');
+  assert.equal(still.payload.plans.length, 2, 'the previous planning must survive a bad scrape');
+});
+
+test('a malformed push is rejected', async (t) => {
+  const { call } = await servePushed(t);
+  assert.equal((await call('/api/planning/import', { method: 'POST', body: {} })).status, 400);
+  assert.equal((await call('/api/planning/import', { method: 'POST', body: { plans: 'nope' } })).status, 400);
+  assert.equal(
+    (await call('/api/planning/import', {
+      method: 'POST',
+      body: { plans: Array.from({ length: 501 }, (_, i) => ({ ID: `P${i}` })) },
+    })).status,
+    400,
+  );
+});
+
+test('the import endpoint needs the bearer token like everything else', async (t) => {
+  const { call } = await servePushed(t);
+  const res = await call('/api/planning/import', { method: 'POST', body: { plans: SHEET_ROWS }, token: null });
+  assert.equal(res.status, 401);
+});
+
+test('a read-only source refuses a push instead of pretending', async (t) => {
+  const { call } = await serve(t); // the fixture-backed server from above
+  const res = await call('/api/planning/import', { method: 'POST', body: { plans: SHEET_ROWS } });
+  assert.equal(res.status, 409);
+  assert.match(res.payload.message, /PLANNING_SOURCE=pushed/);
+});

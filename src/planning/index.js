@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const { normalizePlanning } = require('./schema');
 
 /**
@@ -26,6 +27,66 @@ function fixtureSource(cfg) {
         new Error(
           'Votes cannot be saved yet: the planning is read from a static fixture. ' +
             'Wire up PLANNING_SOURCE=google-sheets to make voting write back to the sheet.',
+        ),
+        { code: 'ENOTIMPLEMENTED' },
+      );
+    },
+  };
+}
+
+/**
+ * Route B: the planning is pushed in by a scheduled Claude Routine that reads
+ * the Google Sheet with the operator's own Drive connector and POSTs the rows
+ * to /api/planning/import. Nothing Google-specific runs on the VPS — no service
+ * account, no OAuth client, no credentials on the box.
+ *
+ * The cache is a plain file so a bot restart does not lose the last planning.
+ */
+function pushedSource(cfg) {
+  return {
+    name: 'pushed',
+    writable: false,
+    async load() {
+      if (!fs.existsSync(cfg.planning.pushedFile)) {
+        throw Object.assign(
+          new Error(
+            'No planning has been pushed yet. The Routine posts it to /api/planning/import; ' +
+              'see console/README.md, or switch to PLANNING_SOURCE=fixture.',
+          ),
+          { code: 'ENOPLANNING' },
+        );
+      }
+      const raw = JSON.parse(fs.readFileSync(cfg.planning.pushedFile, 'utf8'));
+      const planning = normalizePlanning(raw);
+      planning.pushedAt = raw.pushedAt || null;
+      return planning;
+    },
+    /** Replace the cached planning. Returns the normalised result. */
+    save(raw) {
+      const planning = normalizePlanning(raw);
+      const payload = {
+        title: planning.title,
+        source: planning.source || 'pushed by Routine',
+        sheetId: planning.sheetId || cfg.planning.sheetId,
+        pushedAt: new Date().toISOString(),
+        plans: planning.plans.map((p) => ({
+          id: p.id, plan: p.plan, categoria: p.categoria, tipo: p.tipo, dia: p.dia,
+          horario: p.horario, estado: p.estado, votoOlivier: p.votoOlivier,
+          votoKarina: p.votoKarina, fechaVoto: p.fechaVoto, enlace: p.enlace,
+          maps: p.maps, notas: p.notas,
+        })),
+      };
+      fs.mkdirSync(path.dirname(cfg.planning.pushedFile), { recursive: true, mode: 0o700 });
+      const tmp = `${cfg.planning.pushedFile}.tmp`;
+      fs.writeFileSync(tmp, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+      fs.renameSync(tmp, cfg.planning.pushedFile); // atomic: never a half-written planning
+      return { ...planning, pushedAt: payload.pushedAt };
+    },
+    async recordVote() {
+      throw Object.assign(
+        new Error(
+          'Votes are not written back yet. The Routine that pushes the planning would also have to ' +
+            'write the vote columns to the sheet.',
         ),
         { code: 'ENOTIMPLEMENTED' },
       );
@@ -75,6 +136,8 @@ function createPlanningSource(cfg) {
   switch (cfg.planning.source) {
     case 'fixture':
       return fixtureSource(cfg);
+    case 'pushed':
+      return pushedSource(cfg);
     case 'google-sheets':
       return googleSheetsSource(cfg);
     default:

@@ -3,13 +3,14 @@
 const { logger } = require('../logger');
 const { renderPlanning, renderPlan } = require('../format');
 const { parseCommand, HELP_TEXT } = require('./commands');
+const { sessionIdFor } = require('../ask/claude');
 
 /**
  * The interactive half: listens on the WhatsApp socket and answers commands.
  * It keeps no state of its own — every answer is derived from the planning
  * source, so a restart loses nothing.
  */
-function createBot({ cfg, provider, planningSource }) {
+function createBot({ cfg, provider, planningSource, askQueue = null }) {
   if (!provider.supportsIncoming) {
     throw new Error(
       `The "${provider.name}" provider cannot receive messages. Use WHATSAPP_PROVIDER=baileys to run the bot.`,
@@ -35,9 +36,38 @@ function createBot({ cfg, provider, planningSource }) {
     return cfg.voters[digits] || null;
   }
 
+  /**
+   * Decide whether a non-command message is a question for Claude.
+   *
+   * In a group the bot must be named — otherwise it would answer every message
+   * in the chat. A one-to-one chat with a known voter needs no prefix, since
+   * everything said there is addressed to the bot anyway.
+   *
+   * @returns {string|null} the question text, or null to stay quiet
+   */
+  function questionFrom(incoming) {
+    if (!askQueue || !cfg.ask.enabled) return null;
+    if (!voterName(incoming.senderJid)) return null; // never answer strangers
+
+    const text = incoming.text.trim();
+    const needsPrefix = incoming.isGroup || cfg.ask.requirePrefixInDirect;
+    if (!needsPrefix) return text.slice(0, cfg.ask.maxQuestionChars);
+
+    const prefix = cfg.ask.prefix;
+    const lowered = text.toLowerCase();
+    if (!lowered.startsWith(prefix)) return null;
+
+    // Accept "Claude, ..." / "Claude: ..." / "Claude ..." but not "Claudia ...".
+    const rest = text.slice(prefix.length);
+    if (rest && !/^[\s,:;!?-]/.test(rest)) return null;
+
+    const question = rest.replace(/^[\s,:;!?-]+/, '').trim();
+    return question ? question.slice(0, cfg.ask.maxQuestionChars) : null;
+  }
+
   async function handleIncoming(incoming) {
     const command = parseCommand(incoming.text);
-    if (!command) return; // stay quiet on ordinary chatter
+    if (!command) return void (await maybeAsk(incoming));
 
     logger.info(
       `Command "${command.kind}" from ${incoming.pushName || incoming.senderJid}` +
@@ -85,6 +115,28 @@ function createBot({ cfg, provider, planningSource }) {
     }
   }
 
+  /** Queue a question for the ask worker; the answer arrives whenever it arrives. */
+  async function maybeAsk(incoming) {
+    const question = questionFrom(incoming);
+    if (!question) return; // ordinary chatter: stay quiet
+
+    try {
+      const job = askQueue.enqueue({
+        question,
+        chatJid: incoming.chatJid,
+        senderJid: incoming.senderJid,
+        pushName: incoming.pushName,
+        sessionId: sessionIdFor(incoming.chatJid),
+        messageId: incoming.raw && incoming.raw.key ? incoming.raw.key.id : null,
+      });
+      logger.info(`Queued question "${job.id}" from ${incoming.pushName || incoming.senderJid}.`);
+      // No "thinking…" message: the answer can be hours away, and a bot that
+      // says something on every message is noise in a group.
+    } catch (err) {
+      logger.error('Could not queue the question:', err);
+    }
+  }
+
   async function handleVote(incoming, command) {
     const who = voterName(incoming.senderJid);
     if (!who) {
@@ -124,6 +176,7 @@ function createBot({ cfg, provider, planningSource }) {
 
   return {
     handleIncoming,
+    questionFrom,
     async start() {
       provider.onMessage(handleIncoming);
       await provider.connect();

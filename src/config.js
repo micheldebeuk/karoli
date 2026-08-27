@@ -24,7 +24,7 @@ function loadEnvFile() {
 }
 
 const PROVIDERS = ['baileys', 'cloud', 'dry-run'];
-const SOURCES = ['fixture', 'google-sheets'];
+const SOURCES = ['fixture', 'pushed', 'google-sheets'];
 
 function bool(name, fallback = false) {
   const raw = process.env[name];
@@ -111,11 +111,38 @@ function load() {
       // `dispatch` waits on a real WhatsApp send, so give it room.
       dispatchTimeoutMs: int('PLANES_CONTROL_DISPATCH_TIMEOUT_MS', 120_000),
     },
+    // Route A: answers written by Claude Code running headless on the VPS,
+    // authenticated with the operator's subscription (claude setup-token), not
+    // an API key.
+    ask: {
+      enabled: bool('PLANES_ASK_ENABLED', false),
+      bin: process.env.PLANES_ASK_CLAUDE_BIN || 'claude',
+      model: process.env.PLANES_ASK_MODEL || 'sonnet',
+      // In a group the bot must not answer every message, so it needs naming.
+      // A one-to-one chat with a known voter needs no prefix.
+      prefix: (process.env.PLANES_ASK_PREFIX || 'claude').trim().toLowerCase(),
+      requirePrefixInDirect: bool('PLANES_ASK_PREFIX_IN_DIRECT', false),
+      queueDir: path.resolve(ROOT, process.env.PLANES_ASK_QUEUE_DIR || './data/ask-queue'),
+      workDir: path.resolve(ROOT, process.env.PLANES_ASK_WORK_DIR || './data/ask-workdir'),
+      tickMs: int('PLANES_ASK_TICK_MS', 30_000),
+      timeoutMs: int('PLANES_ASK_TIMEOUT_MS', 300_000),
+      maxAttempts: int('PLANES_ASK_MAX_ATTEMPTS', 6),
+      // Usage comes out of the same subscription pool as the operator's own
+      // Claude Code work, so cap how much the chat can spend.
+      dailyLimit: int('PLANES_ASK_DAILY_LIMIT', 25),
+      maxQuestionChars: int('PLANES_ASK_MAX_QUESTION_CHARS', 1500),
+      maxAnswerChars: int('PLANES_ASK_MAX_ANSWER_CHARS', 1200),
+      systemPrompt: process.env.PLANES_ASK_SYSTEM_PROMPT
+        || 'Eres un asistente en un chat de WhatsApp sobre planes de fin de semana en Barcelona. '
+        + 'Responde en el idioma del mensaje, de forma breve y concreta. Sin markdown de titulos ni listas largas.',
+    },
     planning: {
       source,
       fixtureFile: path.resolve(ROOT, process.env.PLANNING_FIXTURE || './fixtures/planning.json'),
       sheetId: process.env.PLANNING_SHEET_ID || '',
       sheetRange: process.env.PLANNING_SHEET_RANGE || 'A1:M',
+      // Where PLANNING_SOURCE=pushed keeps the last planning a Routine sent.
+      pushedFile: path.resolve(ROOT, process.env.PLANNING_PUSHED_FILE || './data/planning-pushed.json'),
     },
   };
 

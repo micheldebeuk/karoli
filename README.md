@@ -168,6 +168,45 @@ and refuses to restart into a tree that does not parse.
 > self-hosted runner, adding `--labels losali-vps`), or promote it to an
 > organisation runner shared by both. Until then dispatched runs simply queue.
 
+## Asking Claude from the chat (Route A)
+
+Reply in WhatsApp and get an answer, billed to your **Claude subscription** —
+not the API. The bot shells out to Claude Code headless (`claude -p`).
+
+```bash
+# once, as the user pm2 runs as
+claude setup-token      # its own help: "requires Claude subscription"
+claude auth status      # must report "authMethod": "oauth_token"
+```
+
+Then `PLANES_ASK_ENABLED=1`. How it behaves:
+
+- **One-to-one chat** with a number in `PLANNING_VOTERS`: any non-command
+  message is a question.
+- **In a group**: only when named — `Claude, ¿que tiempo hara el sabado?`.
+  Otherwise the bot stays silent, as it should in a group.
+- **Strangers are never answered.**
+
+Questions go to a durable on-disk queue and are answered whenever they can be.
+That is the design, not a limitation: subscription limits are windowed, so a
+question may legitimately wait — the queue survives restarts and reboots and
+backs off for half an hour when a limit is hit, without saying anything in the
+chat.
+
+Three things keep this safe and on the subscription:
+
+- **No tools at all.** `--allowedTools ""` and `--permission-mode manual`. Anyone
+  who can message the number puts text in front of the model, so it gets no
+  Bash, no filesystem, no network — the whole injection class is removed.
+- **The API key is stripped from the child's environment.** A stray
+  `ANTHROPIC_API_KEY` can shadow the OAuth credential and silently move you onto
+  per-token billing. `--bare` is never passed either, for the same reason.
+- **A daily cap** (`PLANES_ASK_DAILY_LIMIT`, default 25). The bot draws from the
+  same pool as your own Claude Code work.
+
+Each WhatsApp chat maps to a stable Claude session id, so a thread is one
+continuing conversation rather than a cold start per message.
+
 ## The control API
 
 `planes-bot` serves a small HTTP API so other things can drive it without
@@ -180,6 +219,7 @@ touching the WhatsApp session:
 | `GET /api/planning` | bearer | the plans plus the exact rendered message parts |
 | `POST /api/preview` | bearer | re-render with exclusions / weekend toggle |
 | `POST /api/send` | bearer | send, honouring `dryRun`, `recipients`, `exclude` |
+| `POST /api/planning/import` | bearer | Route B: accept a planning pushed by a Routine |
 | `GET /api/groups` | bearer | group JIDs |
 
 Set `PLANES_CONTROL_TOKEN` (24+ chars) — the server refuses to start without
@@ -192,6 +232,20 @@ losali proxy does for `api.losalidirect.com` — there is a ready nginx vhost at
 [`deploy/planes.losalidirect.com.conf`](deploy/planes.losalidirect.com.conf).
 Never bind the bot itself to a public interface: the bearer token is the only
 credential and plain HTTP would put it on the wire.
+
+## Getting the sheet in without Google credentials (Route B)
+
+`PLANNING_SOURCE=pushed` lets a scheduled **Claude Routine** read *Planes
+Karolito* with your own Google Drive connector and POST it to
+`/api/planning/import`. No service account, no OAuth client, nothing Google on
+the VPS — and it runs on your subscription too.
+
+The scheduler's floor is **one hour** (measured: a shorter cron is rejected with
+*"the minimum interval is 1 hour"*), which is ample for a weekend planning.
+Setup, the exact Routine prompt and the cron are in
+[`docs/ROUTINE.md`](docs/ROUTINE.md).
+
+An empty push is refused on purpose: a bad read must never wipe a good planning.
 
 ## Two consoles
 
