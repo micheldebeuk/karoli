@@ -140,7 +140,7 @@ The app runs under pm2 as two processes (`ecosystem.config.js`):
 
 ```bash
 # on the VPS, as ubuntu
-git clone https://github.com/micheldebeuk/Plans.git /home/ubuntu/plans
+git clone https://github.com/micheldebeuk/karoli.git /home/ubuntu/plans
 /home/ubuntu/plans/deploy/install.sh          # deps, .env, syntax check
 cd /home/ubuntu/plans
 nano .env                                     # fill it in

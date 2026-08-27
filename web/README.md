@@ -14,7 +14,7 @@ password. Each hop has its own credential.
 
 ## Deploying
 
-1. **Vercel → Add New → Project**, import `micheldebeuk/Plans`.
+1. **Vercel → Add New → Project**, import `micheldebeuk/karoli`.
 2. Set **Root Directory** to `web`. There is no build step and no framework —
    `index.html`, `styles.css` and `app.js` are served statically and `api/*.js`
    become Node functions.

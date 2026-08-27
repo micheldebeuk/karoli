@@ -3,7 +3,7 @@
 # Run as the `ubuntu` user. Idempotent — safe to re-run.
 set -euo pipefail
 
-REPO_URL="${PLANES_REPO_URL:-https://github.com/micheldebeuk/Plans.git}"
+REPO_URL="${PLANES_REPO_URL:-https://github.com/micheldebeuk/karoli.git}"
 APP_DIR="${PLANES_DIR:-/home/ubuntu/plans}"
 BRANCH="${PLANES_BRANCH:-main}"
 

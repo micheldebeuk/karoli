@@ -45,7 +45,7 @@ jobs:
             "$APP_DIR/deploy/install.sh"
           else
             echo "First install: clone the repo to $APP_DIR, then re-run this action."
-            echo "  git clone https://github.com/micheldebeuk/Plans.git $APP_DIR"
+            echo "  git clone https://github.com/micheldebeuk/karoli.git $APP_DIR"
             exit 1
           fi
 
